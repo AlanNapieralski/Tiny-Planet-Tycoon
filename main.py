@@ -7,10 +7,10 @@ This build adds **online multiplayer (2‑player co‑op)** on top of the previo
 - Works over LAN or internet (port‑forward if needed)
 - Still fully playable offline (no args)
 
-Existing features kept: boss fights, powerups, coins, shop with upgrades, stronger early balance, lighting/particles, controller support, optional procedural audio (numpy).
+Existing features kept: boss fights, powerups, coins, shop with upgrades, stronger early balance, lighting/particles, controller support, sound effects.
 
 Run:
-  pip install pygame numpy   # numpy optional but recommended for audio
+  pip install pygame
 
 Host:
   python main.py --host 5000
@@ -26,7 +26,7 @@ Controls:
 
 Notes:
 - **Security**: this is a learning/demo netcode using JSON over TCP. Do not expose publicly without hardening.
-- **NAT**: to play over the internet, forward the chosen port on the host’s router.
+- **NAT**: to play over the internet, forward the chosen port on the host's router.
 - **Performance**: snapshots ~20 Hz; keep one client for simplicity.
 """
 
@@ -37,17 +37,11 @@ import time
 import json
 import socket
 import threading
+import os
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 
 import pygame
-
-# Optional audio via numpy
-try:
-    import numpy as np
-    NUMPY_AVAILABLE = True
-except Exception:
-    NUMPY_AVAILABLE = False
 
 # ---------------------------- SETTINGS ---------------------------------
 WIDTH, HEIGHT = 1200, 700
@@ -117,25 +111,107 @@ def norm(x, y):
         return 0.0, 0.0
     return x / l, y / l
 
-# ---------------------------- AUDIO HELPERS -----------------------------
+# ---------------------------- AUDIO SYSTEM -----------------------------
 
-def make_sound_tone(freq=440, duration=0.2, volume=0.5, sample_rate=44100):
-    if not NUMPY_AVAILABLE:
-        return None
-    t = np.linspace(0, duration, int(sample_rate*duration), False)
-    wave = 0.6 * np.sign(np.sin(2 * np.pi * freq * t)) + 0.4 * np.sin(2 * np.pi * freq * t)
-    audio = (wave * (2**15 - 1) * volume).astype(np.int16)
-    sound = pygame.sndarray.make_sound(audio)
-    return sound
+class SoundManager:
+    def __init__(self):
+        self.sounds = {}
+        self.background_music = None
+        self.music_playing = False
+        self.sound_enabled = True
+        self.load_sounds()
+    
+    def load_sounds(self):
+        """Load all sound effects from the sound folder"""
+        sound_files = {
+            'background': 'background.mp3',
+            'boss_die1': 'boss_die1.mp3',
+            'boss_die2': 'boss_die2.mp3', 
+            'boss_die3': 'boss_die3.mp3',
+            'defeat': 'defeat.mp3',
+            'enemy_die': 'enemy_die.mp3',
+            'enemy_die2': 'enemy_die2.mp3',
+            'laser_shot': 'laser_shot.mp3',
+            'shop': 'shop.mp3',
+            'super_shot': 'super_shot.mp3',
+            'victory': 'victory.mp3'
+        }
+        
+        sound_folder = os.path.join(os.path.dirname(__file__), 'sound')
+        
+        for name, filename in sound_files.items():
+            filepath = os.path.join(sound_folder, filename)
+            try:
+                if os.path.exists(filepath):
+                    if name == 'background':
+                        # Background music handled separately
+                        self.background_music = filepath
+                    else:
+                        self.sounds[name] = pygame.mixer.Sound(filepath)
+                        # Adjust volumes for better balance
+                        if name in ['laser_shot', 'super_shot']:
+                            self.sounds[name].set_volume(0.4)
+                        elif name in ['enemy_die', 'enemy_die2']:
+                            self.sounds[name].set_volume(0.6)
+                        elif name in ['boss_die1', 'boss_die2', 'boss_die3']:
+                            self.sounds[name].set_volume(0.8)
+                        elif name in ['defeat', 'victory']:
+                            self.sounds[name].set_volume(0.9)
+                        elif name == 'shop':
+                            self.sounds[name].set_volume(0.7)
+                else:
+                    print(f"Warning: Sound file not found: {filepath}")
+            except Exception as e:
+                print(f"Error loading sound {name}: {e}")
+    
+    def play_sound(self, name, volume=1.0):
+        """Play a sound effect"""
+        if not self.sound_enabled or name not in self.sounds:
+            return
+        try:
+            sound = self.sounds[name]
+            if volume != 1.0:
+                sound.set_volume(sound.get_volume() * volume)
+            sound.play()
+        except Exception as e:
+            print(f"Error playing sound {name}: {e}")
+    
+    def play_background_music(self, loop=True):
+        """Start background music"""
+        if not self.sound_enabled or not self.background_music or self.music_playing:
+            return
+        try:
+            pygame.mixer.music.load(self.background_music)
+            pygame.mixer.music.set_volume(0.3)  # Keep background music quiet
+            pygame.mixer.music.play(-1 if loop else 0)
+            self.music_playing = True
+        except Exception as e:
+            print(f"Error playing background music: {e}")
+    
+    def stop_background_music(self):
+        """Stop background music"""
+        try:
+            pygame.mixer.music.stop()
+            self.music_playing = False
+        except Exception:
+            pass
+    
+    def play_random_enemy_death(self):
+        """Play a random enemy death sound"""
+        sounds = ['enemy_die', 'enemy_die2']
+        available = [s for s in sounds if s in self.sounds]
+        if available:
+            self.play_sound(random.choice(available))
+    
+    def play_random_boss_death(self):
+        """Play a random boss death sound"""
+        sounds = ['boss_die1', 'boss_die2', 'boss_die3']
+        available = [s for s in sounds if s in self.sounds]
+        if available:
+            self.play_sound(random.choice(available))
 
-
-def make_sound_explosion(duration=0.35, sample_rate=44100):
-    if not NUMPY_AVAILABLE:
-        return None
-    t = np.linspace(0, duration, int(sample_rate*duration), False)
-    noise = np.random.normal(0, 1, t.shape[0]) * np.exp(-3 * t)
-    audio = (noise * (2**15 - 1) * 0.6).astype(np.int16)
-    return pygame.sndarray.make_sound(audio)
+# Global sound manager instance
+sound_manager = None
 
 # ---------------------------- ART & TEXTURES ----------------------------
 
@@ -236,6 +312,8 @@ class State:
     coins_total: int = 0
     core_hp: int = CORE_MAX_HP
     screenshake: float = 0.0
+    game_over: bool = False
+    victory: bool = False
 
 # ---------------------------- GAME MECHANICS -----------------------------
 
@@ -309,10 +387,19 @@ def update_player(p: Player, dt: float, ax: float, ay: float):
 
 
 def player_fire_from_dir(state: State, p: Player, aim_dir: Tuple[float,float]):
+    global sound_manager
     p.cooldown = max(0.0, p.cooldown)
     base_dmg = int(18 * p.damage_mult)
     bullets_to_fire = 1 + p.spread_level*2
     spread_angle = 0.28 if p.spread_level>0 else 0.0
+    
+    # Play appropriate shooting sound
+    if sound_manager:
+        if p.overdrive_t > 0 or p.damage_mult > 2.0:
+            sound_manager.play_sound('super_shot')
+        else:
+            sound_manager.play_sound('laser_shot')
+    
     for i in range(bullets_to_fire):
         ang_off = 0.0
         if bullets_to_fire>1:
@@ -390,11 +477,15 @@ def update_bosses(state: State, dt: float):
             spawn_explosion(state,b.x,b.y,intensity=48)
             spawn_coin(state,b.x,b.y,COIN_PER_BOSS)
             state.powerups.append(Powerup(b.x,b.y, random.choice(POWERUP_TYPES)))
+            # Play boss death sound
+            if sound_manager:
+                sound_manager.play_random_boss_death()
             state.bosses.pop(i); continue
         i+=1
 
 
 def handle_collisions(state: State):
+    global sound_manager
     # bullets vs enemies/bosses
     i=0
     while i < len(state.bullets):
@@ -431,6 +522,9 @@ def handle_collisions(state: State):
             spawn_explosion(state,e.x,e.y, intensity=12)
             spawn_coin(state,e.x,e.y,e.coin)
             try_drop_powerup(state,e.x,e.y)
+            # Play enemy death sound
+            if sound_manager:
+                sound_manager.play_random_enemy_death()
             state.enemies.pop(i); continue
         i+=1
 
@@ -680,11 +774,17 @@ class NetClient:
 # ---------------------------- MAIN (HOST) -------------------------------
 
 def host_main(port:int):
+    global sound_manager
+    
     pygame.init()
     try:
-        pygame.mixer.init(frequency=44100, size=-16, channels=2)
-    except Exception:
-        pass
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
+    except Exception as e:
+        print(f"Warning: Could not initialize mixer: {e}")
+    
+    # Initialize sound manager
+    sound_manager = SoundManager()
+    
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption(f"Tiny Planet: Siege — Host :{port}")
     clock = pygame.time.Clock()
@@ -696,17 +796,6 @@ def host_main(port:int):
     stars = [(random.randint(0,WIDTH-1), random.randint(0,HEIGHT-1), random.random()*0.9+0.1, random.uniform(0.6,1.6)) for _ in range(260)]
     light = make_light_sprite(220)
 
-    # audio
-    sounds = {}
-    if NUMPY_AVAILABLE:
-        try:
-            sounds['shot'] = make_sound_tone(880, 0.06, 0.3)
-            sounds['expl'] = make_sound_explosion(0.28)
-            sounds['coin'] = make_sound_tone(1100,0.08,0.25)
-            sounds['power'] = make_sound_tone(680,0.12,0.25)
-        except Exception:
-            sounds = {}
-
     # controller
     joystick = None
     if pygame.joystick.get_count() > 0:
@@ -717,11 +806,18 @@ def host_main(port:int):
         Player(x=PLANET_CENTER[0], y=PLANET_CENTER[1]+PLANET_RADIUS//2-40, is_remote=True),
     ])
     spawn_wave(state)
+    
+    # Start background music
+    sound_manager.play_background_music()
 
-    server = NetServer(port)
+    server = NetServer(port) if port > 0 else None
     t=0.0
     last_snap=0.0
     running=True
+    shop_sound_played = False
+    defeat_sound_played = False
+    victory_sound_played = False
+    
     while running:
         dt = clock.tick(FPS)/1000.0
         t += dt
@@ -729,7 +825,13 @@ def host_main(port:int):
             if ev.type==pygame.QUIT: running=False
             if ev.type==pygame.KEYDOWN:
                 if ev.key==pygame.K_ESCAPE: running=False
-                if ev.key==pygame.K_r: state = State(players=state.players); spawn_wave(state)
+                if ev.key==pygame.K_r: 
+                    state = State(players=state.players)
+                    spawn_wave(state)
+                    shop_sound_played = False
+                    defeat_sound_played = False
+                    victory_sound_played = False
+                    sound_manager.play_background_music()
                 if state.in_shop and ev.key in (pygame.K_1,pygame.K_2,pygame.K_3,pygame.K_4):
                     idx = {pygame.K_1:0,pygame.K_2:1,pygame.K_3:2,pygame.K_4:3}[ev.key]
                     up = SHOP_UPGRADES[idx]
@@ -738,6 +840,23 @@ def host_main(port:int):
                         up['apply'](state)
                 if state.in_shop and ev.key==pygame.K_b:
                     state.shop_time = 0.0
+
+        # Play shop sound when entering shop
+        if state.in_shop and not shop_sound_played:
+            sound_manager.play_sound('shop')
+            shop_sound_played = True
+        elif not state.in_shop:
+            shop_sound_played = False
+
+        # Check for game over/victory conditions
+        if state.core_hp <= 0 and not defeat_sound_played:
+            sound_manager.stop_background_music()
+            sound_manager.play_sound('defeat')
+            defeat_sound_played = True
+        elif state.wave >= 20 and not state.enemies and not state.bosses and state.enemies_to_spawn == 0 and not victory_sound_played:
+            sound_manager.stop_background_music()
+            sound_manager.play_sound('victory')
+            victory_sound_played = True
 
         # local input (player 0)
         if not state.in_shop and state.core_hp>0:
@@ -772,16 +891,17 @@ def host_main(port:int):
                 state.screenshake = min(22.0, state.screenshake + 2.8)
 
             # remote player (player 1) from server.inputs
-            inp = server.inputs
-            update_player(state.players[1], dt, inp["ax"], inp["ay"])
-            p1 = state.players[1]
-            p1.cooldown -= dt
-            rate1 = p1.fire_rate * (0.5 if p1.overdrive_t>0 else 1.0)
-            if p1.cooldown<=0 and inp["fire"]:
-                aim = norm(inp["aimx"], inp["aimy"])
-                if aim != (0.0,0.0):
-                    player_fire_from_dir(state, p1, aim)
-                    p1.cooldown = rate1
+            if server:
+                inp = server.inputs
+                update_player(state.players[1], dt, inp["ax"], inp["ay"])
+                p1 = state.players[1]
+                p1.cooldown -= dt
+                rate1 = p1.fire_rate * (0.5 if p1.overdrive_t>0 else 1.0)
+                if p1.cooldown<=0 and inp["fire"]:
+                    aim = norm(inp["aimx"], inp["aimy"])
+                    if aim != (0.0,0.0):
+                        player_fire_from_dir(state, p1, aim)
+                        p1.cooldown = rate1
 
             # world updates
             update_bullets(state, dt)
@@ -842,27 +962,28 @@ def host_main(port:int):
             i+=1
 
         # snapshots
-        last_snap += dt
-        if last_snap >= 1.0/NET_SNAPSHOT_HZ:
-            last_snap = 0.0
-            snap = {
-                "type":"snapshot",
-                "wave": state.wave,
-                "core": state.core_hp,
-                "coins": state.coins_total,
-                "inshop": state.in_shop,
-                "shop_t": round(state.shop_time,2),
-                "players": [
-                    {"x":state.players[0].x,"y":state.players[0].y,"hp":state.players[0].hp},
-                    {"x":state.players[1].x,"y":state.players[1].y,"hp":state.players[1].hp},
-                ],
-                "enemies": [(round(e.x,1),round(e.y,1),e.hp) for e in state.enemies[:120]],
-                "bosses": [(round(b.x,1),round(b.y,1),b.hp) for b in state.bosses[:6]],
-                "bullets": [(round(b.x,1),round(b.y,1)) for b in state.bullets[:220]],
-                "powerups": [(int(p.x),int(p.y),p.kind) for p in state.powerups[:40]],
-                "coinsF": [(int(c.x),int(c.y)) for c in state.coins[:120]],
-            }
-            server.send_snapshot(snap)
+        if server:
+            last_snap += dt
+            if last_snap >= 1.0/NET_SNAPSHOT_HZ:
+                last_snap = 0.0
+                snap = {
+                    "type":"snapshot",
+                    "wave": state.wave,
+                    "core": state.core_hp,
+                    "coins": state.coins_total,
+                    "inshop": state.in_shop,
+                    "shop_t": round(state.shop_time,2),
+                    "players": [
+                        {"x":state.players[0].x,"y":state.players[0].y,"hp":state.players[0].hp},
+                        {"x":state.players[1].x,"y":state.players[1].y,"hp":state.players[1].hp},
+                    ],
+                    "enemies": [(round(e.x,1),round(e.y,1),e.hp) for e in state.enemies[:120]],
+                    "bosses": [(round(b.x,1),round(b.y,1),b.hp) for b in state.bosses[:6]],
+                    "bullets": [(round(b.x,1),round(b.y,1)) for b in state.bullets[:220]],
+                    "powerups": [(int(p.x),int(p.y),p.kind) for p in state.powerups[:40]],
+                    "coinsF": [(int(c.x),int(c.y)) for c in state.coins[:120]],
+                }
+                server.send_snapshot(snap)
 
         # screenshake
         sx=sy=0
@@ -874,13 +995,13 @@ def host_main(port:int):
         # draw (host view)
         screen.fill(BG)
         stars_surf = screen
-        draw_starfield(stars_surf, [(random.randint(0,WIDTH-1), random.randint(0,HEIGHT-1), random.random()*0.9+0.1, random.uniform(0.6,1.6)) for _ in range(0)], t)
+        draw_starfield(stars_surf, stars, t)
         temp = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
-        draw_planet(temp, radial_gradient(PLANET_RADIUS, (40,150,140), (26,90,110)), clouds, t)
+        draw_planet(temp, planet_base, clouds, t)
         draw_entities(temp, state)
         draw_players(temp, state.players)
         screen.blit(temp, (sx,sy))
-        apply_lighting(screen, make_light_sprite(220), state.players, state.particles)
+        apply_lighting(screen, light, state.players, state.particles)
         draw_hud(screen, font, state)
 
         # overlays
@@ -915,11 +1036,17 @@ def host_main(port:int):
 # ---------------------------- MAIN (CLIENT) -----------------------------
 
 def client_main(host:str, port:int):
+    global sound_manager
+    
     pygame.init()
     try:
-        pygame.mixer.init(frequency=44100, size=-16, channels=2)
-    except Exception:
-        pass
+        pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=1024)
+    except Exception as e:
+        print(f"Warning: Could not initialize mixer: {e}")
+    
+    # Initialize sound manager for client too
+    sound_manager = SoundManager()
+    
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption(f"Tiny Planet: Siege — Client {host}:{port}")
     clock = pygame.time.Clock()
@@ -931,6 +1058,9 @@ def client_main(host:str, port:int):
     light = make_light_sprite(220)
 
     client = NetClient(host, port)
+    
+    # Start background music for client
+    sound_manager.play_background_music()
 
     # simple render state mirrored from snapshots
     snap = {
@@ -944,6 +1074,10 @@ def client_main(host:str, port:int):
 
     t=0.0
     running=True
+    shop_sound_played = False
+    defeat_sound_played = False
+    victory_sound_played = False
+    
     while running:
         dt = clock.tick(FPS)/1000.0
         t+=dt
@@ -975,6 +1109,23 @@ def client_main(host:str, port:int):
             if s.get("type")=="snapshot":
                 snap = s
 
+        # Play shop sound when entering shop
+        if snap.get('inshop') and not shop_sound_played:
+            sound_manager.play_sound('shop')
+            shop_sound_played = True
+        elif not snap.get('inshop'):
+            shop_sound_played = False
+
+        # Check for game over/victory conditions
+        if snap.get('core', CORE_MAX_HP) <= 0 and not defeat_sound_played:
+            sound_manager.stop_background_music()
+            sound_manager.play_sound('defeat')
+            defeat_sound_played = True
+        elif snap.get('wave', 1) >= 20 and not snap.get('enemies') and not snap.get('bosses') and not victory_sound_played:
+            sound_manager.stop_background_music()
+            sound_manager.play_sound('victory')
+            victory_sound_played = True
+
         # draw client view (purely visual)
         screen.fill(BG)
         draw_starfield(screen, stars, t)
@@ -997,6 +1148,16 @@ def client_main(host:str, port:int):
         if snap.get('inshop'):
             shop_text = font.render(f"Shop open… next wave in {int(snap.get('shop_t',0))}s", True, MUTED)
             screen.blit(shop_text, (20, 42))
+            
+        # Game over/victory overlays for client
+        if snap.get('core', CORE_MAX_HP) <= 0:
+            ov = pygame.Surface((WIDTH,140), pygame.SRCALPHA); ov.fill((0,0,0,200))
+            screen.blit(ov, (100, HEIGHT//2-70))
+            t1 = pygame.font.SysFont('arial',22,bold=True).render("CORE DESTROYED!", True, RED)
+            screen.blit(t1, (WIDTH//2 - t1.get_width()//2, HEIGHT//2 - 40))
+            t2 = font.render("Host can restart with R.", True, WHITE)
+            screen.blit(t2, (WIDTH//2 - t2.get_width()//2, HEIGHT//2 + 4))
+            
         pygame.display.flip()
 
     pygame.quit(); sys.exit()
