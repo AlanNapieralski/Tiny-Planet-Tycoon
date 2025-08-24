@@ -1,4 +1,3 @@
-
 @echo off
 echo =============================================
 echo Installing and building My Pygame Game
@@ -9,9 +8,27 @@ REM 1. Check Python installation
 REM ------------------------------
 python --version >nul 2>&1
 IF ERRORLEVEL 1 (
-    echo Python is not installed. Please install Python 3.9 or higher.
-    pause
-    exit /b
+    echo Python is not installed. Downloading Python 3.12 installer...
+    
+    REM Download Python installer (change version if needed)
+    powershell -Command "Invoke-WebRequest -Uri https://www.python.org/ftp/python/3.12.1/python-3.12.1-amd64.exe -OutFile python_installer.exe"
+
+    REM Install Python silently
+    echo Installing Python...
+    start /wait python_installer.exe /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
+
+    REM Remove installer
+    del python_installer.exe
+
+    REM Verify installation
+    python --version >nul 2>&1
+    IF ERRORLEVEL 1 (
+        echo Python installation failed. Please install manually.
+        pause
+        exit /b
+    ) ELSE (
+        echo Python installed successfully!
+    )
 ) ELSE (
     echo Python found!
 )
