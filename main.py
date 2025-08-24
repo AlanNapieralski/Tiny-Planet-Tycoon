@@ -60,7 +60,7 @@ PLANET_CENTER = (WIDTH // 2 + 160, HEIGHT // 2)
 STARTING_HP = 220
 MAX_HP = 220
 CORE_MAX_HP = 320
-PLAYER_SPEED = 260.0
+PLAYER_SPEED = 400.0  # CHANGED: Increased from 260.0 for faster movement
 PLAYER_RADIUS = 14
 PLAYER_REGEN_BETWEEN_WAVES = 28
 
@@ -72,8 +72,9 @@ ENEMY_SPEED = 72.0
 ENEMY_DAMAGE_CORE = 8
 ENEMY_RADIUS = 16
 
-WAVE_BASE_ENEMIES = 5
+WAVE_BASE_ENEMIES = 25
 BOSS_WAVE_INTERVAL = 5
+WAVE_DURATION = 30.0 # NEW: Duration over which wave enemies spawn
 
 COIN_PER_ENEMY = 3
 COIN_PER_BOSS = 80
@@ -228,6 +229,10 @@ class State:
     wave: int = 1
     in_shop: bool = False
     shop_time: float = SHOP_TIME
+    # NEW: State for timed wave spawning
+    wave_timer: float = 0.0
+    enemies_to_spawn: int = 0
+    spawn_cooldown: float = 0.0
     coins_total: int = 0
     core_hp: int = CORE_MAX_HP
     screenshake: float = 0.0
@@ -249,8 +254,13 @@ def spawn_wave(state: State):
     n = WAVE_BASE_ENEMIES + (state.wave-1)
     if state.wave <= 3:
         n = max(3, n-2)
-    for _ in range(n):
-        spawn_enemy(state, hp_bonus=(state.wave-1)//3)
+    
+    # CHANGED: Set up wave parameters for timed spawning instead of spawning all at once
+    state.wave_timer = WAVE_DURATION
+    state.enemies_to_spawn = n
+    state.spawn_cooldown = 0.0 # Spawn first enemy immediately
+
+    # Bosses still spawn at the beginning of their wave
     if state.wave % BOSS_WAVE_INTERVAL == 0:
         bx = PLANET_CENTER[0] + random.choice([-1,1])*(PLANET_RADIUS + 160)
         by = PLANET_CENTER[1]
@@ -778,6 +788,24 @@ def host_main(port:int):
             update_enemies(state, dt)
             update_bosses(state, dt)
             handle_collisions(state)
+            
+            # NEW: Timed wave spawning logic
+            if not state.in_shop and state.enemies_to_spawn > 0:
+                state.wave_timer = max(0, state.wave_timer - dt)
+                state.spawn_cooldown -= dt
+
+                if state.spawn_cooldown <= 0:
+                    spawn_enemy(state, hp_bonus=(state.wave-1)//3)
+                    state.enemies_to_spawn -= 1
+                    
+                    if state.enemies_to_spawn > 0:
+                        if state.wave_timer > 0:
+                            # Spread remaining spawns over the remaining time
+                            time_per_enemy = state.wave_timer / state.enemies_to_spawn
+                            state.spawn_cooldown = time_per_enemy
+                        else:
+                            # If time runs out, spawn the rest quickly
+                            state.spawn_cooldown = 0.2
 
             # timers
             for pl in state.players:
@@ -785,12 +813,12 @@ def host_main(port:int):
                 if pl.shield_t>0: pl.shield_t -= dt
                 if pl.magnet_t>0: pl.magnet_t -= dt
 
-            # wave progression
-            if not state.enemies and not state.bosses:
+            # CHANGED: Wave progression now checks if all enemies for the wave have been spawned
+            if not state.in_shop and not state.enemies and not state.bosses and state.enemies_to_spawn == 0:
                 state.in_shop = True
                 state.shop_time = SHOP_TIME
                 state.wave += 1
-        else:
+        else: # In shop or game over
             state.shop_time -= dt
             if state.shop_time <= 0 and state.in_shop:
                 state.in_shop = False
