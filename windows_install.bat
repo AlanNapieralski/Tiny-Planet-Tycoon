@@ -62,7 +62,7 @@ REM --onefile: single .exe
 REM --windowed: no console window
 REM --icon: your game icon (ico file)
 REM --add-data: include sounds and images
-pyinstaller --onefile --windowed --icon=game_icon.ico --add-data "sounds;sounds" --add-data "images;images" main.py
+pyinstaller --onefile --add-data "sound;sound" main.py
 
 REM ------------------------------
 REM 6. Finish

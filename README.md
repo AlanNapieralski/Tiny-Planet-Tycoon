@@ -32,115 +32,101 @@ To play "Tiny Planet: Siege," you'll first need to install Python, and then the 
 
 Modern versions of macOS come with Python pre-installed. However, it's recommended to install a newer version using Homebrew.
 
-1. **Install Homebrew**: If you don't have Homebrew, open the Terminal (you can find it in Applications -> Utilities) and paste the following command, then press Enter:
+1. **Install Homebrew**: If you don't have Homebrew, open the Terminal (Applications -> Utilities) and paste:
    ```bash
    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
    ```
-   Follow the on-screen instructions.
-
-2. **Install Python**: Once Homebrew is installed, run the following command in the Terminal:
+2. **Install Python**:
    ```bash
    brew install python
    ```
+3. **Verify Installation**:
+   ```bash
+   python3 --version
+   ```
 
-3. **Verify Installation**: Close and reopen the Terminal, then type `python3 --version`. If it shows a version number, you're ready to go.
+---
 
-#### Linux 🐧
+## Dependencies Installation
 
-Most Linux distributions come with Python pre-installed. You can verify this by opening a Terminal and typing `python3 --version`. If it's not installed or you need a newer version, use your distribution's package manager.
+Before running the game, you need to install Python and the required Python libraries. To simplify this process, we’ve included installation scripts for each platform.
 
-**For Debian/Ubuntu-based systems:**
-```bash
-sudo apt update
-sudo apt install python3 python3-pip
-```
+### Windows Users 📝
 
-**For Fedora/CentOS/RHEL-based systems:**
-```bash
-sudo dnf install python3 python3-pip
-```
-
-### 2. Game Dependencies Installation
-
-After installing Python, you need to install the necessary libraries for the game. We've included installation scripts to make this easy.
-
-#### Windows Users
-
-1. **Double-click** the `install_dependencies.bat` file in the game folder
-2. The script will automatically install Pygame and NumPy
-3. Press any key when installation is complete
-
-Alternatively, you can run it from Command Prompt:
+1. **Open Terminal or Command Prompt** in the game folder.
+2. **Run the installation script**:
 ```cmd
-install_dependencies.bat
+windows_install.bat
 ```
+- This script will automatically:
+  - Install Python (if not already installed)
+  - Create a virtual environment
+  - Install Pygame, NumPy, and PyInstaller
+  - Build the `.exe` executable in the `dist` folder
+3. Press any key when the installation completes.
 
-#### macOS and Linux Users
+### macOS Users 🍎
 
-1. **Open Terminal** in the game folder
+1. **Open Terminal** in the game folder.
 2. **Make the script executable** (first time only):
-   ```bash
-   chmod +x install_dependencies.sh
-   ```
+```bash
+chmod +x macOS_install.sh
+```
 3. **Run the installation script**:
-   ```bash
-   ./install_dependencies.sh
-   ```
-
-#### Manual Installation (All Platforms)
-
-If you prefer to install dependencies manually, run:
 ```bash
-pip install pygame numpy
+./macOS_install.sh
 ```
-or on macOS/Linux:
+4. Ensure the resulting executable has execute permissions:
 ```bash
-pip3 install pygame numpy
+chmod +x dist/main
 ```
+
+### Manual Installation (All Platforms)
+
+```bash
+# Windows
+pip install pygame numpy pyinstaller
+
+# macOS
+pip3 install pygame numpy pyinstaller
+```
+
+---
 
 ## How to Play
 
 ### Single-Player (Offline) Mode
 
-To play by yourself, simply run the `main.py` file without any arguments. This mode uses the same host logic but without a second player.
+Run the executable or `main.py` without arguments:
 
 ```bash
-python main.py
+# Windows
+dist\main.exe
+
+# macOS
+./dist/main
 ```
 
 ### Online Co-op
 
-To play with a friend, one person must act as the host and the other as the client.
-
 #### Hosting a Game 💻
-
-The host runs the server, which simulates the game world and handles the game state. The host's computer needs to be accessible to the client.
-
-1. Open a Terminal or Command Prompt in the directory containing `main.py`.
-2. Run the host command, specifying a port number (e.g., 5000).
-   ```bash
-   python main.py --host 5000
-   ```
-3. Find your IP address and share it with your friend. If you're on a LAN, this will be a local IP (e.g., 192.168.1.100). If you're on the internet, you'll need your public IP and may need to set up port forwarding on your router for the chosen port (5000).
+```bash
+python main.py --host 5000
+```
+Share your IP with your friend (LAN or internet; configure port forwarding for public access).
 
 #### Joining a Game 🎮
-
-The client connects to the host's server and sends their input. The game state is streamed from the host to the client.
-
-1. Open a Terminal or Command Prompt in the directory with `main.py`.
-2. Run the join command, using the host's IP address and the specified port.
-   ```bash
-   python main.py --join <HOST_IP>:<PORT>
-   ```
-
-For example, if the host's IP is 127.0.0.1 (for local testing) and the port is 5000:
+```bash
+python main.py --join <HOST_IP>:<PORT>
+```
+Example:
 ```bash
 python main.py --join 127.0.0.1:5000
 ```
 
-## Controls
+---
 
-The game supports both keyboard/mouse and gamepad controls.
+## Controls
 
 | Action | Keyboard/Mouse | Gamepad |
 |--------|----------------|---------|
@@ -148,13 +134,28 @@ The game supports both keyboard/mouse and gamepad controls.
 | Aim | Mouse | Right Stick |
 | Fire | Left Mouse Button | RT / A Button |
 | Restart | R (Host only) | Not available |
-| Buy Upgrade | 1, 2, 3, 4 (Host only) | Not available |
+| Buy Upgrade | 1,2,3,4 (Host only) | Not available |
 | Skip Shop | B (Host only) | Not available |
+
+---
 
 ## Technical Notes
 
-- **Network Protocol**: The game uses a simple, custom netcode that sends JSON messages over TCP. This is intended for learning and demonstration purposes. It is not secure and should not be exposed to the public internet without proper hardening.
+- **Network Protocol**: JSON messages over TCP; not secure for public internet.
+- **Host-Authoritative Model**: Host simulates game physics and sends updates to the client.
+- **Port Forwarding**: Needed for internet play; forward chosen port to host machine.
 
-- **Host-Authoritative Model**: The host's machine is the source of truth for all game physics and state. The client sends input commands to the host, which then simulates the game and sends back a snapshot of the world. This prevents cheating and simplifies synchronization.
+---
 
-- **Port Forwarding**: To play over the internet, the host must configure their router to forward the chosen port to their computer's local IP address. This allows the client's connection request to reach the host's machine.
+## Distribution Scripts Summary
+
+| Platform | Script | Description |
+|----------|--------|-------------|
+| Windows | `windows_install.bat` | Installs Python, dependencies, builds `.exe` |
+| macOS | `macOS_install.sh` | Installs Python, dependencies, builds `.app`/executable |
+
+> Ensure scripts have **execute permissions** on macOS:
+```bash
+chmod +x macOS_install.sh
+chmod +x dist/main
+```

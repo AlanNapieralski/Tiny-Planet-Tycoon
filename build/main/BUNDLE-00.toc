@@ -1,1 +1,0 @@
-([('main', '/Users/alannap/Developer/ai_game/dist/main', 'EXECUTABLE')],)
