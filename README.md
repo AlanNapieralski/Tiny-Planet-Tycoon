@@ -70,11 +70,11 @@ windows_install.bat
 1. **Open Terminal** in the game folder.
 2. **Make the script executable** (first time only):
 ```bash
-chmod +x macOS_install.sh
+chmod +x macos_install.sh
 ```
 3. **Run the installation script**:
 ```bash
-./macOS_install.sh
+./macos_install.sh
 ```
 4. Ensure the resulting executable has execute permissions:
 ```bash
@@ -152,10 +152,10 @@ python main.py --join 127.0.0.1:5000
 | Platform | Script | Description |
 |----------|--------|-------------|
 | Windows | `windows_install.bat` | Installs Python, dependencies, builds `.exe` |
-| macOS | `macOS_install.sh` | Installs Python, dependencies, builds `.app`/executable |
+| macOS | `macos_install.sh` | Installs Python, dependencies, builds `.app`/executable |
 
 > Ensure scripts have **execute permissions** on macOS:
 ```bash
-chmod +x macOS_install.sh
+chmod +x macos_install.sh
 chmod +x dist/main
 ```
